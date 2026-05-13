@@ -49,7 +49,6 @@ async function handleLogin(e) {
   e.preventDefault();
   var email    = (document.getElementById('loginEmail').value    || '').trim().toLowerCase();
   var password = document.getElementById('loginPassword').value;
-  var name     = (document.getElementById('loginName').value     || '').trim();
   var errEl    = document.getElementById('loginError');
   var btn      = document.getElementById('loginBtn');
 
@@ -95,7 +94,7 @@ async function handleLogin(e) {
     var res  = await fetch(EMAIL_BRIDGE + '/auth/login', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ email, password, name: name || undefined, imapHost, imapPort, smtpHost, smtpPort }),
+      body:    JSON.stringify({ email, password, imapHost, imapPort, smtpHost, smtpPort }),
       signal:  AbortSignal.timeout(25000),
     });
     var data = await res.json();
@@ -176,7 +175,6 @@ document.addEventListener('DOMContentLoaded', function() {
   var saved = OfflineStore.getEmailSession();
   if (saved) {
     if (document.getElementById('loginEmail')) document.getElementById('loginEmail').value = saved.email || '';
-    if (document.getElementById('loginName'))  document.getElementById('loginName').value  = saved.name  || '';
     selectProvider(saved.provider || 'gmail');
   } else {
     selectProvider('gmail');

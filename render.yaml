@@ -1,0 +1,11 @@
+﻿services:
+  - type: web
+    name: myhomeconnect-email
+    runtime: node
+    rootDir: sms-bridge
+    buildCommand: npm install
+    startCommand: node email-server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+    healthCheckPath: /status

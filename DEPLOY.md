@@ -27,19 +27,44 @@ teams.js                     email-server.js
 
 ---
 
-## Step 2 — Deploy the Email Bridge to Railway
+## Step 2 — Deploy the Email Bridge to a Free Server
 
-Railway runs the Node.js server that handles IMAP/SMTP.
+You need to deploy `sms-bridge/` to a free Node.js host. Two options:
 
-1. Go to **https://railway.app** → Sign up free (GitHub login)
-2. Click **New Project → Deploy from GitHub repo**
+---
+
+### Option A — Railway (recommended)
+
+1. Go to **https://railway.app** → Sign up with GitHub
+2. Click **"New Project"** → **"Deploy from GitHub repo"**
 3. Select your repository
-4. Railway will detect `sms-bridge/package.json` — set the **Root Directory** to `sms-bridge`
-5. Click **Deploy**
-6. Wait ~2 minutes for the build to finish
-7. Go to **Settings → Networking → Generate Domain**
-8. Copy your Railway URL — it looks like:
-   `https://myhomeconnect-email.up.railway.app`
+4. Railway auto-detects the project. You'll see a service box appear.
+5. Click the service box → **"Settings"** tab
+6. Scroll to **"Build"** → set **Root Directory** to `sms-bridge`
+7. Click **"Deploy"**
+8. After deploy succeeds → still in **"Settings"** → scroll to **"Networking"**
+9. Click **"Generate Domain"** → copy the URL shown (e.g. `https://xxx.up.railway.app`)
+
+---
+
+### Option B — Render (easier UI)
+
+1. Go to **https://render.com** → Sign up with GitHub (free)
+2. Click **"New +"** → **"Web Service"**
+3. Connect your GitHub repo
+4. Fill in:
+   - **Name**: `myhomeconnect-email`
+   - **Root Directory**: `sms-bridge`
+   - **Build Command**: `npm install`
+   - **Start Command**: `node email-server.js`
+   - **Instance Type**: Free
+5. Click **"Create Web Service"**
+6. Wait ~3 minutes for the build
+7. Your URL appears at the top of the page:
+   `https://myhomeconnect-email.onrender.com`
+   Copy it.
+
+> **Note:** Render free tier sleeps after 15 min of inactivity (first request takes ~30s to wake up). Railway free tier is faster.
 
 ---
 

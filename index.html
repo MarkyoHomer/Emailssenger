@@ -24,7 +24,10 @@
         <button onclick="saveBridgeUrl()" style="padding:6px 12px;background:var(--purple);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;">Save</button>
       </div>
       <p style="margin-top:6px;color:var(--text-muted);font-size:11px;">
-        Deploy the <code>sms-bridge/</code> folder to <a href="https://railway.app" target="_blank" style="color:var(--purple-light)">railway.app</a> (free) to get your URL.
+        Deploy the <code>sms-bridge/</code> folder to
+        <a href="https://railway.app" target="_blank" style="color:var(--purple-light)">Railway</a> or
+        <a href="https://render.com" target="_blank" style="color:var(--purple-light)">Render</a>
+        (both free) — see <strong>DEPLOY.md</strong> for step-by-step instructions.
       </p>
     </div>
 
@@ -46,10 +49,6 @@
 
     <!-- Login Form -->
     <form onsubmit="handleLogin(event)" id="loginForm">
-      <div class="form-group">
-        <input type="text" id="loginName" placeholder=" " autocomplete="name">
-        <label>Display Name (optional)</label>
-      </div>
       <div class="form-group">
         <input type="email" id="loginEmail" placeholder=" " required autocomplete="email">
         <label>Email Address</label>
