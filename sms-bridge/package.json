@@ -1,7 +1,7 @@
 {
   "name": "myhomeconnect-email-bridge",
   "version": "2.0.0",
-  "description": "Email bridge server for MyHome Connect — IMAP/SMTP to REST API",
+  "description": "Email bridge for MyHome Connect — IMAP/SMTP to REST API",
   "main": "email-server.js",
   "scripts": {
     "start": "node email-server.js"
@@ -9,8 +9,9 @@
   "dependencies": {
     "cors": "2.8.5",
     "express": "4.19.2",
-    "imap-simple": "5.1.0",
-    "nodemailer": "6.9.13"
+    "imapflow": "1.0.162",
+    "nodemailer": "6.9.13",
+    "mailparser": "3.7.1"
   },
   "engines": {
     "node": ">=18.0.0"
