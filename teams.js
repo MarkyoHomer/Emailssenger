@@ -1185,8 +1185,9 @@ async function sendMessage() {
   }
 
   // ── EMAIL MODE: show optimistically, send via email bridge ──
+  const optId = 'opt-' + Date.now();
   const optimisticMsg = Object.assign({}, msg, {
-    id:        'opt-' + Date.now(),
+    id:        optId,
     timestamp: { toDate: function() { return new Date(); } },
     pending:   true,
   });
@@ -1198,28 +1199,45 @@ async function sendMessage() {
   // Get recipients for this conversation
   var recipients = getRecipientsForConv(state.currentChannel);
 
+  // Helper to clear pending style — searches by optId
+  function clearPending(realId) {
+    var el = document.querySelector('[data-msg-id="' + optId + '"]');
+    if (!el) return;
+    if (realId) el.dataset.msgId = realId;
+    var bubble = el.querySelector('.msg-bubble');
+    if (bubble) {
+      bubble.classList.remove('pending-bubble');
+      bubble.style.opacity = '1';
+      bubble.style.borderStyle = '';
+    }
+    // Remove the pending badge span if present
+    var badge = el.querySelector('.pending-badge');
+    if (badge) badge.remove();
+    el.style.opacity = '1';
+    el.title = '✉️ Sent';
+  }
+
   try {
     var result = await emailSendMessage(state.currentChannel, msg, recipients);
-    // Update optimistic bubble — mark as sent
-    var optEl = document.querySelector('[data-msg-id="' + optimisticMsg.id + '"]');
-    if (optEl) {
-      optEl.dataset.msgId = result.id || optimisticMsg.id;
-      var bubble = optEl.querySelector('.msg-bubble');
-      if (bubble) bubble.classList.remove('pending-bubble');
-      optEl.title = '✉️ Sent via email';
+    clearPending(result && result.id);
+
+    // Update cached message — remove pending flag
+    var cached = OfflineStore.getCachedMessages(state.currentChannel);
+    var idx = cached.findIndex(function(m) { return m.id === optId; });
+    if (idx >= 0) {
+      cached[idx].pending = false;
+      if (result && result.id) cached[idx].id = result.id;
+      OfflineStore.cacheMessages(state.currentChannel, cached);
     }
+
     // Update DM activity
     if (state.currentChannel.startsWith('dm-')) {
       state.dmLastActivity[state.currentChannel] = Date.now();
       renderDMsFromCache();
     }
   } catch (err) {
-    var optEl = document.querySelector('[data-msg-id="' + optimisticMsg.id + '"]');
-    if (optEl) {
-      optEl.style.opacity = '0.5';
-      optEl.title = 'Failed to send: ' + err.message;
-    }
-    // Queue for retry
+    var el = document.querySelector('[data-msg-id="' + optId + '"]');
+    if (el) { el.style.opacity = '0.5'; el.title = 'Failed to send: ' + err.message; }
     OfflineStore.addToOutbox(state.currentChannel, msg);
     showSyncToast('⚠️ Send failed — queued for retry');
     console.error('[Email] Send failed:', err);
