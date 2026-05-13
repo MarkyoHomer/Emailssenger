@@ -124,12 +124,38 @@ async function handleLogin(e) {
 function saveBridgeUrl() {
   var input = document.getElementById('bridgeUrlInput');
   if (!input) return;
-  var url = input.value.trim().replace(/\/$/, ''); // strip trailing slash
+  var url = input.value.trim().replace(/\/$/, '');
   if (!url.startsWith('http')) { alert('Enter a valid URL starting with https://'); return; }
   localStorage.setItem('mhc_bridge_url', url);
   document.getElementById('bridgeSetup').style.display = 'none';
-  // Reload so EMAIL_BRIDGE picks up the new value
   window.location.reload();
+}
+
+async function testBridgeUrl() {
+  var input  = document.getElementById('bridgeUrlInput');
+  var result = document.getElementById('bridgeTestResult');
+  if (!input || !result) return;
+  var url = input.value.trim().replace(/\/$/, '');
+  if (!url) { result.textContent = 'Enter a URL first.'; result.style.color = '#ff6b6b'; return; }
+  result.textContent = 'Testing…'; result.style.color = 'var(--text-muted)';
+  try {
+    var res = await fetch(url + '/status', { signal: AbortSignal.timeout(8000) });
+    if (res.ok) {
+      var data = await res.json();
+      result.textContent = '✅ Connected! Server uptime: ' + data.uptime + 's';
+      result.style.color = '#92c353';
+    } else {
+      result.textContent = '✗ Server returned HTTP ' + res.status;
+      result.style.color = '#ff6b6b';
+    }
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      result.textContent = '✗ Timeout — server took too long (may be sleeping, try again in 30s)';
+    } else {
+      result.textContent = '✗ ' + e.message + ' — check Railway deployment logs';
+    }
+    result.style.color = '#ff6b6b';
+  }
 }
 
 async function checkBridgeServer() {

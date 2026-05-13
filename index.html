@@ -22,7 +22,9 @@
         <input type="url" id="bridgeUrlInput" placeholder="https://your-app.up.railway.app"
           style="flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--input-bg);color:var(--text);font-size:12px;outline:none;">
         <button onclick="saveBridgeUrl()" style="padding:6px 12px;background:var(--purple);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;">Save</button>
+        <button onclick="testBridgeUrl()" style="padding:6px 10px;background:rgba(255,255,255,0.1);color:var(--text-muted);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:12px;" title="Test connection">🔍</button>
       </div>
+      <p id="bridgeTestResult" style="margin-top:6px;font-size:11px;min-height:14px;"></p>
       <p style="margin-top:6px;color:var(--text-muted);font-size:11px;">
         Deploy <code>sms-bridge/</code> to
         <a href="https://railway.app" target="_blank" style="color:var(--purple-light)">Railway</a> or
