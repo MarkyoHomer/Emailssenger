@@ -51,8 +51,8 @@ var _emailPollSince   = {}; // { convId: ISO string }
 
 function startEmailPoll(convId) {
   if (_emailPollTimers[convId]) return;
-  _emailPollTimers[convId] = setInterval(function() { fetchEmailMessages(convId); }, 4000);
-  fetchEmailMessages(convId); // immediate
+  _emailPollTimers[convId] = setInterval(function() { fetchEmailMessages(convId); }, 10000);
+  fetchEmailMessages(convId); // immediate first fetch
 }
 
 function stopEmailPoll(convId) {
@@ -67,6 +67,18 @@ function stopAllEmailPolls() {
 async function fetchEmailMessages(convId) {
   var since = _emailPollSince[convId] || '';
   try {
+    // Trigger server-side IMAP sync first, then fetch results
+    try {
+      await fetch(EMAIL_BRIDGE_URL + '/messages/sync', {
+        method:  'POST',
+        headers: Object.assign({ 'Content-Type': 'application/json' }, emailHeaders()),
+        body:    JSON.stringify({ convId: convId }),
+        signal:  AbortSignal.timeout(12000),
+      });
+    } catch (syncErr) {
+      // Sync failed (timeout etc) — still try to fetch cached messages
+    }
+
     var url = EMAIL_BRIDGE_URL + '/messages/' + encodeURIComponent(convId) +
               (since ? '?since=' + encodeURIComponent(since) : '');
     var res  = await fetch(url, { headers: emailHeaders(), signal: AbortSignal.timeout(5000) });
@@ -78,10 +90,34 @@ async function fetchEmailMessages(convId) {
     var me      = (JSON.parse(sessionStorage.getItem('teamsUser') || '{}')).email || '';
 
     msgs.forEach(function(m) {
-      // Skip if already rendered
+      var isMine = m.from === me;
+
+      // Skip own sent messages — they're already shown optimistically
+      // BUT only skip if the optimistic bubble is still in the DOM
+      if (isMine) {
+        // Check if there's already a rendered bubble for this message
+        // (either the optimistic opt- bubble or a previously received sent- bubble)
+        if (document.querySelector('[data-msg-id="' + m.id + '"]')) return;
+        // Also skip if any opt- bubble exists with same text (optimistic match)
+        var optBubbles = document.querySelectorAll('[data-msg-id^="opt-"]');
+        for (var i = 0; i < optBubbles.length; i++) {
+          var bubbleText = optBubbles[i].querySelector('.msg-bubble');
+          if (bubbleText && bubbleText.innerText && bubbleText.innerText.trim() === (m.text || '').trim()) {
+            // Replace the opt- ID with the real ID so future dedup works
+            optBubbles[i].dataset.msgId = m.id;
+            // Clear pending style
+            var pb = optBubbles[i].querySelector('.msg-bubble');
+            if (pb) { pb.classList.remove('pending-bubble'); pb.style.opacity = '1'; pb.style.borderStyle = ''; }
+            var badge = optBubbles[i].querySelector('.pending-badge');
+            if (badge) badge.remove();
+            return; // don't re-render
+          }
+        }
+      }
+
+      // Skip if already rendered by exact ID
       if (document.querySelector('[data-msg-id="' + m.id + '"]')) return;
 
-      var isMine = m.from === me;
       var msgObj = {
         id:          m.id,
         sender:      m.fromName || m.from,
@@ -98,19 +134,13 @@ async function fetchEmailMessages(convId) {
       // Cache locally
       OfflineStore.appendCachedMessage(convId, msgObj);
 
-      // Only append to UI if this is the active channel
       if (convId === state.currentChannel) {
-        if (!isMine) {
-          // Don't re-render own sent messages (already shown optimistically)
-          appendMessageEl(area, msgObj);
-          changed = true;
-        }
-        // Update unread for messages from others
+        appendMessageEl(area, msgObj);
+        changed = true;
         if (!isMine) {
           state.unreadMsgIds.add(m.id);
         }
       } else {
-        // Unread badge for background conversations
         if (!isMine) {
           state.unread[convId] = (state.unread[convId] || 0) + 1;
           if (!state.unreadSenders[convId]) state.unreadSenders[convId] = new Set();
