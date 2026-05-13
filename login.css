@@ -1,0 +1,385 @@
+:root {
+  --purple: #6264a7;
+  --purple-dark: #464775;
+  --purple-light: #8b8cc7;
+  --bg: #0d0d1a;
+  --card-bg: #1e1f3b;
+  --border: #2e3060;
+  --text: #e8e8f4;
+  --text-muted: #9ea2c8;
+  --input-bg: #111130;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: 'Segoe UI', 'Calibri', sans-serif;
+}
+
+body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100svh;
+  min-height: 100dvh;
+  min-height: 100vh;
+  background: var(--bg);
+  padding: 16px;
+}
+
+.login-container {
+  width: 100%;
+  max-width: 400px;
+}
+
+.login-box {
+  background: var(--card-bg);
+  border-radius: 14px;
+  padding: 32px 28px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+  text-align: center;
+  border: 1px solid var(--border);
+}
+
+.login-logo {
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  margin-bottom: 12px;
+}
+
+h1 {
+  font-size: 22px;
+  color: #fff;
+  margin-bottom: 6px;
+  font-weight: 700;
+}
+
+.subtitle {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 24px;
+}
+
+/* ── Tabs ── */
+.tabs {
+  display: flex;
+  border-bottom: 2px solid var(--border);
+  margin-bottom: 20px;
+}
+
+.tab {
+  flex: 1;
+  padding: 9px;
+  background: none;
+  border: none;
+  font-size: 14px;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-family: 'Segoe UI', sans-serif;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  transition: all 0.2s;
+}
+
+.tab.active {
+  color: #fff;
+  border-bottom-color: var(--purple-light);
+  font-weight: 600;
+}
+
+/* ── Form ── */
+.form-group {
+  position: relative;
+  margin-bottom: 18px;
+  text-align: left;
+}
+
+.form-group input {
+  width: 100%;
+  padding: 12px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+  background: var(--input-bg);
+  color: var(--text);
+}
+
+.form-group input:focus {
+  border-color: var(--purple-light);
+}
+
+.form-group label {
+  position: absolute;
+  left: 11px;
+  top: 12px;
+  font-size: 14px;
+  color: var(--text-muted);
+  pointer-events: none;
+  transition: 0.2s;
+  background: var(--input-bg);
+  padding: 0 4px;
+}
+
+.form-group input:focus + label,
+.form-group input:not(:placeholder-shown) + label {
+  top: -8px;
+  font-size: 11px;
+  color: var(--purple-light);
+}
+
+/* ── Login button ── */
+.login-btn {
+  width: 100%;
+  padding: 12px;
+  background: var(--purple);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.15s;
+  margin-top: 6px;
+}
+
+.login-btn:hover {
+  background: var(--purple-dark);
+  transform: translateY(-1px);
+}
+
+.login-btn:active {
+  transform: translateY(0);
+}
+
+.login-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ── Error message ── */
+.error-msg {
+  color: #ff6b6b;
+  font-size: 12px;
+  margin-bottom: 10px;
+  min-height: 16px;
+  text-align: left;
+}
+
+/* ── Network badge ── */
+.network-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 16px;
+  margin-bottom: 18px;
+  letter-spacing: .3px;
+}
+
+.network-badge.online {
+  background: rgba(146, 195, 83, 0.15);
+  color: #92c353;
+  border: 1px solid rgba(146, 195, 83, 0.3);
+}
+
+.network-badge.offline {
+  background: rgba(196, 49, 75, 0.15);
+  color: #ff6b6b;
+  border: 1px solid rgba(196, 49, 75, 0.3);
+  animation: pulse-badge 2s infinite;
+}
+
+@keyframes pulse-badge {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.6; }
+}
+
+/* ── Mobile ── */
+@media (max-width: 480px) {
+  body { padding: 10px; align-items: flex-start; padding-top: 20px; }
+
+  .login-box {
+    padding: 24px 18px;
+    border-radius: 12px;
+  }
+
+  .login-logo { width: 46px; height: 46px; margin-bottom: 10px; }
+  h1 { font-size: 20px; }
+  .subtitle { font-size: 12px; margin-bottom: 18px; }
+
+  .form-group { margin-bottom: 14px; }
+  .form-group input { padding: 11px 10px; font-size: 14px; }
+  .login-btn { padding: 11px; font-size: 14px; }
+  .tab { font-size: 13px; padding: 8px; }
+}
+
+/* ── OTP Verification Step ── */
+.otp-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 20px;
+  padding: 16px;
+  background: rgba(98, 100, 167, 0.12);
+  border: 1px solid rgba(98, 100, 167, 0.3);
+  border-radius: 10px;
+  text-align: center;
+}
+
+.otp-icon {
+  font-size: 32px;
+  line-height: 1;
+}
+
+.otp-info p {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+.otp-info strong {
+  color: #fff;
+  font-size: 14px;
+  word-break: break-all;
+}
+
+/* Large centered OTP input */
+#regOtp {
+  text-align: center;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 8px;
+  padding: 12px 11px !important;
+}
+
+.otp-resend {
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 14px;
+}
+
+.resend-btn {
+  background: none;
+  border: none;
+  color: var(--purple-light);
+  cursor: pointer;
+  font-size: 12px;
+  font-family: 'Segoe UI', sans-serif;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.resend-btn:disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
+  text-decoration: none;
+}
+
+.back-btn {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  font-family: 'Segoe UI', sans-serif;
+  transition: background 0.2s, color 0.2s;
+}
+
+.back-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+}
+
+/* ── Advanced server settings ── */
+.advanced-toggle {
+  font-size: 12px;
+  color: var(--purple-light);
+  cursor: pointer;
+  margin-bottom: 10px;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.advanced-toggle:hover { color: #fff; }
+
+.advanced-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 12px;
+}
+
+/* ── Gmail hint ── */
+.gmail-hint {
+  background: rgba(234,67,53,0.1);
+  border: 1px solid rgba(234,67,53,0.3);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: #f4a49e;
+  margin-top: 12px;
+  line-height: 1.6;
+}
+.gmail-hint a { color: #f4a49e; }
+.gmail-hint strong { color: #fff; }
+
+/* ── Provider selector ── */
+.provider-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+
+.provider-btn {
+  flex: 1;
+  padding: 8px 4px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  font-family: 'Segoe UI', sans-serif;
+  transition: all 0.15s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.provider-btn span { font-size: 16px; }
+.provider-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
+.provider-btn.active {
+  background: rgba(98,100,167,0.3);
+  border-color: var(--purple-light);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* ── Provider hint ── */
+.provider-hint {
+  background: rgba(98,100,167,0.1);
+  border: 1px solid rgba(98,100,167,0.3);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 12px;
+  line-height: 1.6;
+}
+
+.provider-hint strong { color: #fff; }
+.provider-hint a { color: var(--purple-light); }
+.provider-hint a:hover { color: #fff; }

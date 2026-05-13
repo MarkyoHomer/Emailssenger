@@ -1,0 +1,19 @@
+# Node modules — Railway installs these automatically
+sms-bridge/node_modules/
+node_modules/
+
+# Local Windows node binary — not needed on Railway
+node-v24.15.0-win-x64/
+
+# Sensitive files
+sms-bridge/email-users.json
+sms-bridge/users.json
+sms-bridge/*.log
+sms-bridge/serviceAccountKey.json
+
+# Local env overrides
+.env.local
+
+# OS files
+.DS_Store
+Thumbs.db

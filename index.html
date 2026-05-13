@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Login - MyHome Connect</title>
+<link rel="stylesheet" href="login.css">
+</head>
+<body>
+<div class="login-container">
+  <div class="login-box">
+    <img src="M-LOGO.png" alt="Logo" class="login-logo" onerror="this.style.display='none'">
+    <h1>MyHome Connect</h1>
+    <p class="subtitle">Chat via your email account</p>
+    <div id="networkBadge" class="network-badge online">🟢 Online</div>
+
+    <!-- Bridge server URL (shown only if not configured) -->
+    <div id="bridgeSetup" style="display:none;background:rgba(248,210,42,0.1);border:1px solid rgba(248,210,42,0.3);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12px;">
+      <strong style="color:#f8d22a;">⚙️ Server not configured</strong><br>
+      <span style="color:var(--text-muted);">Enter your Railway server URL:</span>
+      <div style="display:flex;gap:6px;margin-top:6px;">
+        <input type="url" id="bridgeUrlInput" placeholder="https://your-app.up.railway.app"
+          style="flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--input-bg);color:var(--text);font-size:12px;outline:none;">
+        <button onclick="saveBridgeUrl()" style="padding:6px 12px;background:var(--purple);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;">Save</button>
+      </div>
+      <p style="margin-top:6px;color:var(--text-muted);font-size:11px;">
+        Deploy the <code>sms-bridge/</code> folder to <a href="https://railway.app" target="_blank" style="color:var(--purple-light)">railway.app</a> (free) to get your URL.
+      </p>
+    </div>
+
+    <!-- Provider quick-select -->
+    <div class="provider-row">
+      <button type="button" class="provider-btn active" id="provGmail"   onclick="selectProvider('gmail')">
+        <span>📧</span> Gmail
+      </button>
+      <button type="button" class="provider-btn" id="provOutlook" onclick="selectProvider('outlook')">
+        <span>📨</span> Outlook
+      </button>
+      <button type="button" class="provider-btn" id="provYahoo"   onclick="selectProvider('yahoo')">
+        <span>📬</span> Yahoo
+      </button>
+      <button type="button" class="provider-btn" id="provCustom"  onclick="selectProvider('custom')">
+        <span>⚙️</span> Custom
+      </button>
+    </div>
+
+    <!-- Login Form -->
+    <form onsubmit="handleLogin(event)" id="loginForm">
+      <div class="form-group">
+        <input type="text" id="loginName" placeholder=" " autocomplete="name">
+        <label>Display Name (optional)</label>
+      </div>
+      <div class="form-group">
+        <input type="email" id="loginEmail" placeholder=" " required autocomplete="email">
+        <label>Email Address</label>
+      </div>
+      <div class="form-group">
+        <input type="password" id="loginPassword" placeholder=" " required autocomplete="current-password">
+        <label id="passwordLabel">App Password</label>
+      </div>
+
+      <!-- Custom IMAP/SMTP settings -->
+      <div id="advancedSettings" style="display:none">
+        <div class="advanced-grid">
+          <div class="form-group">
+            <input type="text" id="imapHost" placeholder=" " autocomplete="off">
+            <label>IMAP Host</label>
+          </div>
+          <div class="form-group">
+            <input type="number" id="imapPort" placeholder=" " value="993">
+            <label>IMAP Port</label>
+          </div>
+          <div class="form-group">
+            <input type="text" id="smtpHost" placeholder=" " autocomplete="off">
+            <label>SMTP Host</label>
+          </div>
+          <div class="form-group">
+            <input type="number" id="smtpPort" placeholder=" " value="587">
+            <label>SMTP Port</label>
+          </div>
+        </div>
+      </div>
+
+      <p class="error-msg" id="loginError"></p>
+      <button type="submit" class="login-btn" id="loginBtn">Sign In</button>
+    </form>
+
+    <!-- Provider-specific hints -->
+    <div class="provider-hint" id="hintGmail">
+      Gmail requires an <strong>App Password</strong> — your regular password won't work.<br>
+      <a href="https://myaccount.google.com/apppasswords" target="_blank">→ Create App Password</a>
+      &nbsp;(needs 2-Step Verification enabled)
+    </div>
+    <div class="provider-hint" id="hintOutlook" style="display:none">
+      Use your regular Outlook/Hotmail/Live password.<br>
+      If it fails, check: <a href="https://account.live.com/proofs/manage" target="_blank">Security settings</a>
+    </div>
+    <div class="provider-hint" id="hintYahoo" style="display:none">
+      Yahoo requires an <strong>App Password</strong>.<br>
+      <a href="https://login.yahoo.com/account/security" target="_blank">→ Create App Password</a>
+    </div>
+    <div class="provider-hint" id="hintCustom" style="display:none">
+      Enter your IMAP/SMTP server details above.
+    </div>
+
+    <p style="font-size:11px;color:var(--text-muted);text-align:center;margin-top:12px;line-height:1.6;">
+      Credentials are stored locally on this device only.<br>
+      <span id="serverStatus" style="color:var(--text-muted)">Checking server…</span>
+    </p>
+  </div>
+</div>
+
+<script src="offline-store.js"></script>
+<script src="login.js"></script>
+</body>
+</html>
