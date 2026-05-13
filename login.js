@@ -1,12 +1,7 @@
 // ── EMAIL BRIDGE URL ─────────────────────────────────────────
-// When deployed: set this to your Railway URL
-// e.g. 'https://myhomeconnect-email.up.railway.app'
-// When running locally: uses localhost:3001
 const EMAIL_BRIDGE = (function() {
-  // Check if a Railway URL is stored (set after first deploy)
   var stored = localStorage.getItem('mhc_bridge_url');
-  if (stored) return stored;
-  // Default: local development
+  if (stored) return stored.replace(/\/$/, '');
   return 'http://localhost:3001';
 })();
 
@@ -140,20 +135,31 @@ function saveBridgeUrl() {
 async function checkBridgeServer() {
   var statusEl = document.getElementById('serverStatus');
   var setupEl  = document.getElementById('bridgeSetup');
+  var urlInput = document.getElementById('bridgeUrlInput');
+
+  // Pre-fill input with current URL if set
+  var current = localStorage.getItem('mhc_bridge_url');
+  if (urlInput && current) urlInput.value = current;
+
+  // Always show setup panel if using localhost (means not configured for web)
+  var isLocalhost = EMAIL_BRIDGE.includes('localhost');
+  if (isLocalhost && setupEl) {
+    setupEl.style.display = 'block';
+    if (statusEl) { statusEl.textContent = '⚠️ Server URL not configured for web'; statusEl.style.color = '#f8d22a'; }
+    return;
+  }
+
   try {
-    var res = await fetch(EMAIL_BRIDGE + '/status', { signal: AbortSignal.timeout(3000) });
+    var res = await fetch(EMAIL_BRIDGE + '/status', { signal: AbortSignal.timeout(5000) });
     if (res.ok) {
-      if (statusEl) { statusEl.textContent = '✅ Server connected'; statusEl.style.color = '#92c353'; }
+      if (statusEl) { statusEl.textContent = '✅ Server connected — ' + EMAIL_BRIDGE; statusEl.style.color = '#92c353'; }
       if (setupEl)  setupEl.style.display = 'none';
     } else {
-      throw new Error('not ok');
+      throw new Error('HTTP ' + res.status);
     }
   } catch (e) {
-    if (statusEl) { statusEl.textContent = '⚠️ Server not reachable'; statusEl.style.color = '#f8d22a'; }
-    // Show setup panel if no Railway URL configured
-    if (!localStorage.getItem('mhc_bridge_url') && setupEl) {
-      setupEl.style.display = 'block';
-    }
+    if (statusEl) { statusEl.textContent = '⚠️ Server not reachable: ' + EMAIL_BRIDGE; statusEl.style.color = '#ff6b6b'; }
+    if (setupEl)  setupEl.style.display = 'block';
   }
 }
 function updateNetworkBadge() {

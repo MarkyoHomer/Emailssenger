@@ -14,20 +14,20 @@
     <p class="subtitle">Chat via your email account</p>
     <div id="networkBadge" class="network-badge online">🟢 Online</div>
 
-    <!-- Bridge server URL (shown only if not configured) -->
-    <div id="bridgeSetup" style="display:none;background:rgba(248,210,42,0.1);border:1px solid rgba(248,210,42,0.3);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12px;">
-      <strong style="color:#f8d22a;">⚙️ Server not configured</strong><br>
-      <span style="color:var(--text-muted);">Enter your Railway server URL:</span>
+    <!-- Bridge server URL config -->
+    <div id="bridgeSetup" style="background:rgba(248,210,42,0.1);border:1px solid rgba(248,210,42,0.3);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12px;">
+      <strong style="color:#f8d22a;">⚙️ Server URL</strong><br>
+      <span style="color:var(--text-muted);">Enter your Railway/Render server URL:</span>
       <div style="display:flex;gap:6px;margin-top:6px;">
         <input type="url" id="bridgeUrlInput" placeholder="https://your-app.up.railway.app"
           style="flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--input-bg);color:var(--text);font-size:12px;outline:none;">
         <button onclick="saveBridgeUrl()" style="padding:6px 12px;background:var(--purple);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;">Save</button>
       </div>
       <p style="margin-top:6px;color:var(--text-muted);font-size:11px;">
-        Deploy the <code>sms-bridge/</code> folder to
+        Deploy <code>sms-bridge/</code> to
         <a href="https://railway.app" target="_blank" style="color:var(--purple-light)">Railway</a> or
         <a href="https://render.com" target="_blank" style="color:var(--purple-light)">Render</a>
-        (both free) — see <strong>DEPLOY.md</strong> for step-by-step instructions.
+        (free) — see <strong>DEPLOY.md</strong>.
       </p>
     </div>
 
