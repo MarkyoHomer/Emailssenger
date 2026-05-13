@@ -1,0 +1,18 @@
+
+╔══════════════════════════════════════════╗
+║   Palawan Connect — SMS Bridge Server    ║
+╠══════════════════════════════════════════╣
+║  Dashboard  →  http://localhost:3000      ║
+║  Webhook    →  http://YOUR-IP:3000/sms   ║
+║  OTP Send   →  POST /send-otp            ║
+║  OTP Verify →  POST /verify-otp          ║
+║  ADB Status →  GET  /adb-status          ║
+╚══════════════════════════════════════════╝
+
+  SMS Transport priority:
+  1. ⚠️  WiFi Gateway: not configured (set SMS_GATEWAY_IP in .env)
+  2. 🔌 ADB (USB): checking for connected device...
+  Firebase project: pconnect-9e7db
+
+  📵 No ADB device — USB SMS polling inactive
+     Connect phone via USB with USB Debugging enabled to activate
