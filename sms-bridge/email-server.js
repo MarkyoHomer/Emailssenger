@@ -273,10 +273,31 @@ app.get('/users', function(req, res) { res.json(loadUsers()); });
 // ── MESSAGES: GET ─────────────────────────────────────────────
 app.get('/messages/:convId', function(req, res) {
   const token = req.headers['x-token'];
-  if (!sessions[token]) return res.status(401).json({ ok: false, error: 'Not authenticated' });
+  const sess  = sessions[token];
+  if (!sess) return res.status(401).json({ ok: false, error: 'Not authenticated' });
+
   const since = req.query.since || '';
-  const msgs  = (messageStore[req.params.convId] || []).filter(m => !since || m.date > since);
+  const msgs  = (messageStore[req.params.convId] || []).filter(function(m) {
+    if (!since) return true;
+    return m.date > since;
+  });
   res.json(msgs);
+});
+
+// ── MESSAGES: FORCE SYNC (triggers immediate IMAP fetch) ──────
+app.post('/messages/sync', async function(req, res) {
+  const token = req.headers['x-token'];
+  const sess  = sessions[token];
+  if (!sess) return res.status(401).json({ ok: false, error: 'Not authenticated' });
+
+  try {
+    await fetchNewMessages(sess);
+    const convId = req.body.convId;
+    const msgs   = convId ? (messageStore[convId] || []) : [];
+    res.json({ ok: true, count: msgs.length });
+  } catch (e) {
+    res.json({ ok: false, error: e.message });
+  }
 });
 
 // ── MESSAGES: SEND ────────────────────────────────────────────
