@@ -17,3 +17,7 @@ sms-bridge/serviceAccountKey.json
 # OS files
 .DS_Store
 Thumbs.db
+
+# Keep root package.json (needed for Railway deployment)
+!package.json
+!Procfile
