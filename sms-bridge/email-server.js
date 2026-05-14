@@ -33,18 +33,104 @@ app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 
 // ── IN-MEMORY STORES ─────────────────────────────────────────
-const sessions     = {};  // token → session
-const messageStore = {};  // convId → [msg, ...]
-const imapTimers   = {};  // token → intervalId
+const sessions   = {};  // token → session
+const imapTimers = {};  // token → intervalId
 
 // ── USERS FILE ────────────────────────────────────────────────
-const USERS_FILE = path.join(__dirname, 'email-users.json');
+const USERS_FILE    = path.join(__dirname, 'email-users.json');
+const MESSAGES_FILE = path.join(__dirname, 'email-messages.json');
+
 function loadUsers() {
   try { return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8')); } catch (e) { return []; }
 }
 function saveUsers(users) {
   try { fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2)); } catch (e) {}
+  // Also persist to Redis if available
+  if (redisClient) redisSet('emailUsers', JSON.stringify(users)).catch(function() {});
 }
+
+async function loadUsersFromStorage() {
+  if (redisClient) {
+    try {
+      const data = await redisGet('emailUsers');
+      if (data) return JSON.parse(data);
+    } catch (e) {}
+  }
+  return loadUsers();
+}
+
+// Message store — persisted to disk so restarts don't lose history
+// On Railway: use MESSAGES_FILE path (ephemeral but better than nothing)
+// For true persistence: set REDIS_URL env var to an Upstash Redis URL
+let messageStore = {};
+let redisClient  = null;
+
+async function initStorage() {
+  // Try Redis first (Upstash free tier — set REDIS_URL in Railway env vars)
+  if (process.env.REDIS_URL) {
+    try {
+      // Use fetch-based Redis (no native deps needed)
+      console.log('[Store] Redis URL found — using Upstash for persistence');
+      redisClient = { url: process.env.REDIS_URL };
+      // Load existing messages from Redis
+      const data = await redisGet('messageStore');
+      if (data) {
+        messageStore = JSON.parse(data);
+        console.log('[Store] Loaded ' + Object.keys(messageStore).length + ' conversations from Redis');
+      }
+      return;
+    } catch (e) {
+      console.warn('[Store] Redis init failed:', e.message, '— falling back to file');
+      redisClient = null;
+    }
+  }
+  // Fall back to JSON file
+  try {
+    const data = JSON.parse(fs.readFileSync(MESSAGES_FILE, 'utf8'));
+    messageStore = data || {};
+    console.log('[Store] Loaded ' + Object.keys(messageStore).length + ' conversations from file');
+  } catch (e) {
+    messageStore = {};
+  }
+}
+
+async function redisGet(key) {
+  if (!redisClient) return null;
+  try {
+    const res  = await fetch(redisClient.url + '/get/' + encodeURIComponent(key), {
+      headers: { Authorization: 'Bearer ' + (process.env.REDIS_TOKEN || '') },
+    });
+    const data = await res.json();
+    return data.result || null;
+  } catch (e) { return null; }
+}
+
+async function redisSet(key, value) {
+  if (!redisClient) return;
+  try {
+    // Upstash REST API: POST /set/key/value  OR  pipeline
+    // Use pipeline for large values
+    await fetch(redisClient.url + '/pipeline', {
+      method:  'POST',
+      headers: {
+        Authorization:  'Bearer ' + (process.env.REDIS_TOKEN || ''),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify([['SET', key, value]]),
+    });
+  } catch (e) { /* silent */ }
+}
+
+function saveMessageStore() {
+  if (redisClient) {
+    redisSet('messageStore', JSON.stringify(messageStore)).catch(function() {});
+  } else {
+    try { fs.writeFileSync(MESSAGES_FILE, JSON.stringify(messageStore)); } catch (e) {}
+  }
+}
+
+// Auto-save every 30 seconds
+setInterval(saveMessageStore, 30000);
 
 // ── HELPERS ───────────────────────────────────────────────────
 function generateToken() {
@@ -166,6 +252,7 @@ async function fetchNewMessages(sess) {
           const msgObj = {
             id:          msgId,
             from:        senderEmail,
+            fromEmail:   senderEmail,   // explicit for client "mine" detection
             fromName:    senderName,
             fromColor:   senderColor,
             to:          [sess.email],
@@ -180,6 +267,7 @@ async function fetchNewMessages(sess) {
           if (!messageStore[convId]) messageStore[convId] = [];
           messageStore[convId].push(msgObj);
           if (messageStore[convId].length > 500) messageStore[convId].shift();
+          saveMessageStore(); // persist immediately
 
           console.log('[IMAP] ' + senderName + ' → ' + convId + ': ' + cleanText.slice(0, 60));
 
@@ -332,12 +420,14 @@ app.post('/messages/send', async function(req, res) {
     const msgId  = 'sent-' + Date.now();
     const msgObj = {
       id: msgId, from: sess.email, fromName: sess.name, fromColor: sess.color,
+      fromEmail: sess.email,   // explicit email field for client "mine" detection
       to: recipients, convId, text, quoteText: quoteText || null,
       quoteSender: quoteSender || null, date: new Date().toISOString(), sent: true,
     };
     if (!messageStore[convId]) messageStore[convId] = [];
     messageStore[convId].push(msgObj);
     if (messageStore[convId].length > 500) messageStore[convId].shift();
+    saveMessageStore(); // persist immediately
 
     res.json({ ok: true, id: msgId });
   } catch (e) {
@@ -358,11 +448,13 @@ app.get('/status', function(req, res) {
 });
 
 // ── START ─────────────────────────────────────────────────────
-app.listen(PORT, '0.0.0.0', function() {
+app.listen(PORT, '0.0.0.0', async function() {
+  await initStorage();
   console.log('\n╔══════════════════════════════════════════╗');
   console.log('║  MyHome Connect — Email Bridge Server    ║');
   console.log('╠══════════════════════════════════════════╣');
   console.log('║  Port    →  ' + PORT + '                          ║');
+  console.log('║  Storage →  ' + (redisClient ? 'Redis (persistent)' : 'File (ephemeral)') + '         ║');
   console.log('║  Status  →  GET  /status                 ║');
   console.log('║  Login   →  POST /auth/login             ║');
   console.log('║  Send    →  POST /messages/send          ║');
