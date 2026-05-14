@@ -68,7 +68,22 @@ You need to deploy `sms-bridge/` to a free Node.js host. Two options:
 
 ---
 
-## Step 3 — Enable GitHub Pages
+## Step 2.5 — Add Persistent Storage (Upstash Redis — free)
+
+Without this, messages are lost every time Railway restarts. Upstash gives you a free Redis database.
+
+1. Go to **https://upstash.com** → Sign up free
+2. Click **"Create Database"** → choose a region close to your Railway region
+3. After creation, click the database → **"REST API"** tab
+4. Copy the **UPSTASH_REDIS_REST_URL** and **UPSTASH_REDIS_REST_TOKEN**
+5. In Railway → your service → **"Variables"** tab → add:
+   - `REDIS_URL` = your Upstash REST URL (e.g. `https://xxx.upstash.io`)
+   - `REDIS_TOKEN` = your Upstash REST token
+6. Railway will redeploy automatically
+
+After this, messages survive server restarts permanently.
+
+---
 
 1. In your GitHub repo → **Settings → Pages**
 2. Source: **Deploy from a branch**

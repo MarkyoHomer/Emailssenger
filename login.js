@@ -1,8 +1,11 @@
 // ── EMAIL BRIDGE URL ─────────────────────────────────────────
+// Hardcoded Railway server URL — set once, works for everyone
 const EMAIL_BRIDGE = (function() {
-  var stored = localStorage.getItem('mhc_bridge_url');
-  if (stored) return stored.replace(/\/$/, '');
-  return 'http://localhost:3001';
+  // Allow override via localStorage for development/testing
+  var override = localStorage.getItem('mhc_bridge_url');
+  if (override) return override.replace(/\/$/, '');
+  // Production Railway URL — update this after deploying to Railway
+  return 'https://emailssenger-production.up.railway.app';
 })();
 
 // ── COLOR GENERATOR ──────────────────────────────────────────
@@ -68,12 +71,37 @@ async function handleLogin(e) {
         new Promise(function(_, r) { setTimeout(function() { r(new Error('t')); }, 2000); }),
       ]);
       if (check && check.ok) {
-        sessionStorage.setItem('teamsUser', JSON.stringify({ id: email, name: cached.name, color: cached.color, email: email, token: cached.token, status: 'online' }));
+        var profileKey   = 'mhc_profile_' + email.replace(/[^a-z0-9]/gi, '_');
+        var savedProfile = JSON.parse(localStorage.getItem(profileKey) || 'null');
+        var sess = {
+          id:        email,
+          name:      (savedProfile && savedProfile.name)      ? savedProfile.name      : cached.name,
+          color:     (savedProfile && savedProfile.color)     ? savedProfile.color     : cached.color,
+          avatarUrl: (savedProfile && savedProfile.avatarUrl) ? savedProfile.avatarUrl : (cached.avatarUrl || ''),
+          mobile:    (savedProfile && savedProfile.mobile)    ? savedProfile.mobile    : (cached.mobile || ''),
+          email:     email,
+          token:     cached.token,
+          status:    'online',
+        };
+        sessionStorage.setItem('teamsUser', JSON.stringify(sess));
+        localStorage.setItem('mhc_session', JSON.stringify(sess));
         window.location.href = 'teams.html';
         return;
       }
     } catch (e) {
-      sessionStorage.setItem('teamsUser', JSON.stringify({ id: email, name: cached.name, color: cached.color, email: email, token: cached.token || '', status: 'offline', localOnly: true }));
+      var profileKey   = 'mhc_profile_' + email.replace(/[^a-z0-9]/gi, '_');
+      var savedProfile = JSON.parse(localStorage.getItem(profileKey) || 'null');
+      var sess = {
+        id:        email,
+        name:      (savedProfile && savedProfile.name)  ? savedProfile.name  : cached.name,
+        color:     (savedProfile && savedProfile.color) ? savedProfile.color : cached.color,
+        email:     email,
+        token:     cached.token || '',
+        status:    'offline',
+        localOnly: true,
+      };
+      sessionStorage.setItem('teamsUser', JSON.stringify(sess));
+      localStorage.setItem('mhc_session', JSON.stringify(sess));
       window.location.href = 'teams.html';
       return;
     }
@@ -107,7 +135,26 @@ async function handleLogin(e) {
     OfflineStore.upsertCachedEmailUser({ email, name: data.user.name, color: data.user.color, token: data.token, imapHost, imapPort, smtpHost, smtpPort });
     OfflineStore.saveEmailSession({ email, name: data.user.name, imapHost, imapPort, smtpHost, smtpPort, provider: _selectedProvider });
 
-    sessionStorage.setItem('teamsUser', JSON.stringify({ id: email, name: data.user.name, color: data.user.color, email: email, token: data.token, status: 'online' }));
+    // Check if user has a saved display name override from profile settings
+    var profileKey      = 'mhc_profile_' + email.replace(/[^a-z0-9]/gi, '_');
+    var savedProfile    = JSON.parse(localStorage.getItem(profileKey) || 'null');
+    var displayName     = (savedProfile && savedProfile.name) ? savedProfile.name : data.user.name;
+    var displayColor    = (savedProfile && savedProfile.color) ? savedProfile.color : data.user.color;
+    var displayAvatar   = (savedProfile && savedProfile.avatarUrl) ? savedProfile.avatarUrl : '';
+
+    sessionStorage.setItem('teamsUser', JSON.stringify({
+      id: email, name: displayName, color: displayColor,
+      email: email, token: data.token, status: 'online',
+      avatarUrl: displayAvatar,
+      mobile: (savedProfile && savedProfile.mobile) ? savedProfile.mobile : '',
+    }));
+    // Also save to localStorage so refresh doesn't require re-login
+    localStorage.setItem('mhc_session', JSON.stringify({
+      id: email, name: displayName, color: displayColor,
+      email: email, token: data.token, status: 'online',
+      avatarUrl: displayAvatar,
+      mobile: (savedProfile && savedProfile.mobile) ? savedProfile.mobile : '',
+    }));
     window.location.href = 'teams.html';
 
   } catch (err) {
@@ -160,32 +207,18 @@ async function testBridgeUrl() {
 
 async function checkBridgeServer() {
   var statusEl = document.getElementById('serverStatus');
-  var setupEl  = document.getElementById('bridgeSetup');
-  var urlInput = document.getElementById('bridgeUrlInput');
-
-  // Pre-fill input with current URL if set
-  var current = localStorage.getItem('mhc_bridge_url');
-  if (urlInput && current) urlInput.value = current;
-
-  // Always show setup panel if using localhost (means not configured for web)
-  var isLocalhost = EMAIL_BRIDGE.includes('localhost');
-  if (isLocalhost && setupEl) {
-    setupEl.style.display = 'block';
-    if (statusEl) { statusEl.textContent = '⚠️ Server URL not configured for web'; statusEl.style.color = '#f8d22a'; }
-    return;
-  }
-
   try {
     var res = await fetch(EMAIL_BRIDGE + '/status', { signal: AbortSignal.timeout(5000) });
     if (res.ok) {
-      if (statusEl) { statusEl.textContent = '✅ Server connected — ' + EMAIL_BRIDGE; statusEl.style.color = '#92c353'; }
-      if (setupEl)  setupEl.style.display = 'none';
+      if (statusEl) { statusEl.textContent = '✅ Server connected'; statusEl.style.color = '#92c353'; }
     } else {
       throw new Error('HTTP ' + res.status);
     }
   } catch (e) {
-    if (statusEl) { statusEl.textContent = '⚠️ Server not reachable: ' + EMAIL_BRIDGE; statusEl.style.color = '#ff6b6b'; }
-    if (setupEl)  setupEl.style.display = 'block';
+    if (statusEl) {
+      statusEl.textContent = '⚠️ Server not reachable — check Railway deployment';
+      statusEl.style.color = '#f8d22a';
+    }
   }
 }
 function updateNetworkBadge() {

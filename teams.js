@@ -1,6 +1,29 @@
-// AUTH GUARD
+// AUTH GUARD — restore session from localStorage if sessionStorage was cleared by refresh
 (function() {
-  if (!sessionStorage.getItem('teamsUser')) window.location.href = 'index.html';
+  var session = sessionStorage.getItem('teamsUser');
+  if (!session) {
+    // Try to restore from localStorage (survives refresh)
+    var stored = localStorage.getItem('mhc_session');
+    if (stored) {
+      try {
+        var parsed = JSON.parse(stored);
+        // Apply any saved profile overrides
+        var profileKey   = 'mhc_profile_' + (parsed.email || parsed.id || '').replace(/[^a-z0-9]/gi, '_');
+        var savedProfile = JSON.parse(localStorage.getItem(profileKey) || 'null');
+        if (savedProfile && savedProfile.name) {
+          parsed.name      = savedProfile.name;
+          parsed.color     = savedProfile.color     || parsed.color;
+          parsed.avatarUrl = savedProfile.avatarUrl || parsed.avatarUrl || '';
+          parsed.mobile    = savedProfile.mobile    || parsed.mobile    || '';
+        }
+        sessionStorage.setItem('teamsUser', JSON.stringify(parsed));
+        session = JSON.stringify(parsed);
+      } catch (e) {
+        localStorage.removeItem('mhc_session');
+      }
+    }
+  }
+  if (!session) window.location.href = 'index.html';
 })();
 
 // ── NETWORK HELPERS ──────────────────────────────────────────
@@ -13,7 +36,7 @@ function isOnline() { return navigator.onLine; }
 //  Messages are sent/received via the email-server.js bridge.
 // ═══════════════════════════════════════════════════════════════
 
-const EMAIL_BRIDGE_URL = localStorage.getItem('mhc_bridge_url') || 'http://localhost:3001';
+const EMAIL_BRIDGE_URL = localStorage.getItem('mhc_bridge_url') || 'https://emailssenger-production.up.railway.app';
 
 // Get the auth token for the current user
 function getEmailToken() {
@@ -90,37 +113,39 @@ async function fetchEmailMessages(convId) {
     var me      = (JSON.parse(sessionStorage.getItem('teamsUser') || '{}')).email || '';
 
     msgs.forEach(function(m) {
-      var isMine = m.from === me;
+      var isMine = m.from === me || m.fromEmail === me;
 
-      // Skip own sent messages — they're already shown optimistically
-      // BUT only skip if the optimistic bubble is still in the DOM
+      // Dedup by exact ID first
+      if (document.querySelector('[data-msg-id="' + m.id + '"]')) return;
+
       if (isMine) {
-        // Check if there's already a rendered bubble for this message
-        // (either the optimistic opt- bubble or a previously received sent- bubble)
-        if (document.querySelector('[data-msg-id="' + m.id + '"]')) return;
-        // Also skip if any opt- bubble exists with same text (optimistic match)
+        // For own messages: find and upgrade any matching optimistic bubble
         var optBubbles = document.querySelectorAll('[data-msg-id^="opt-"]');
+        var matched = false;
         for (var i = 0; i < optBubbles.length; i++) {
-          var bubbleText = optBubbles[i].querySelector('.msg-bubble');
-          if (bubbleText && bubbleText.innerText && bubbleText.innerText.trim() === (m.text || '').trim()) {
-            // Replace the opt- ID with the real ID so future dedup works
+          var bubbleEl = optBubbles[i].querySelector('.msg-bubble');
+          // Match by text content (strip HTML)
+          var bubbleText = bubbleEl ? (bubbleEl.innerText || bubbleEl.textContent || '').trim() : '';
+          var msgText    = (m.text || '').trim();
+          if (bubbleText === msgText || bubbleText.startsWith(msgText)) {
+            // Upgrade: replace opt- ID with real server ID
             optBubbles[i].dataset.msgId = m.id;
-            // Clear pending style
             var pb = optBubbles[i].querySelector('.msg-bubble');
             if (pb) { pb.classList.remove('pending-bubble'); pb.style.opacity = '1'; pb.style.borderStyle = ''; }
             var badge = optBubbles[i].querySelector('.pending-badge');
             if (badge) badge.remove();
-            return; // don't re-render
+            matched = true;
+            break;
           }
         }
+        if (matched) return; // already shown as optimistic bubble
+        // No optimistic match — render it (e.g. message from another device/session)
       }
-
-      // Skip if already rendered by exact ID
-      if (document.querySelector('[data-msg-id="' + m.id + '"]')) return;
 
       var msgObj = {
         id:          m.id,
         sender:      m.fromName || m.from,
+        from:        m.from,        // email address for reliable "mine" detection
         color:       m.fromColor || getColor(m.fromName || m.from),
         text:        m.text || '',
         time:        new Date(m.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -605,19 +630,15 @@ async function loadChannelMeta() {
 
 // Pre-cache the last 100 messages for every channel + every DM in the background
 function preCacheAllMessages() {
-  if (!isOnline() || window._firebaseAvailable === false) return;
-
-  // Group channels
-  channels.forEach(function(ch) {
-    _cacheChannelMessages(ch.id);
-  });
-
-  // DM channels for all known users
-  var users = OfflineStore.getCachedUsers();
+  // In email mode, messages are fetched via IMAP polling — no pre-cache needed
+  // Just start polling for all known DM channels
+  var me    = state.currentUser.email || state.currentUser.id;
+  var users = OfflineStore.getAllEmailUsers ? OfflineStore.getAllEmailUsers() : OfflineStore.getCachedUsers();
   users.forEach(function(u) {
-    if (u.name === state.currentUser.name) return;
-    var dmId = dmChannelId(state.currentUser.name, u.name);
-    _cacheChannelMessages(dmId);
+    var uId = u.email || u.id || u.name;
+    if (!uId || uId === me) return;
+    var dmId = emailDmConvId(me, uId);
+    startEmailPoll(dmId);
   });
 }
 
@@ -679,41 +700,48 @@ function renderDMs(users, filter) {
   const list = document.getElementById('dmList');
   list.innerHTML = '';
 
+  var me = state.currentUser.email || state.currentUser.id || state.currentUser.name;
+
   var filtered = users
-    .filter(function(u) { return u.name !== state.currentUser.name; })
-    .filter(function(u) { return u.name.toLowerCase().includes((filter || '').toLowerCase()); })
-    // Only show if there is an existing conversation (has cached messages, unread, or known activity)
     .filter(function(u) {
-      var dmId = dmChannelId(state.currentUser.name, u.name);
-      var hasMsgs    = OfflineStore.getCachedMessages(dmId).length > 0;
-      var hasUnread  = (state.unread[dmId] || 0) > 0;
-      var hasActivity = (state.dmLastActivity[dmId] || 0) > 0;
-      return hasMsgs || hasUnread || hasActivity;
+      var uId = u.email || u.id || u.name;
+      return uId !== me && u.name !== state.currentUser.name;
+    })
+    .filter(function(u) {
+      var n = (u.name || u.email || '').toLowerCase();
+      return n.includes((filter || '').toLowerCase());
+    })
+    .filter(function(u) {
+      var uId = u.email || u.id || u.name;
+      var dmId = emailDmConvId(me, uId);
+      return OfflineStore.getCachedMessages(dmId).length > 0 ||
+             (state.unread[dmId] || 0) > 0 ||
+             (state.dmLastActivity[dmId] || 0) > 0;
     });
 
-  // Sort: most recent activity first, then alphabetical for ties
   filtered.sort(function(a, b) {
-    var dmA = dmChannelId(state.currentUser.name, a.name);
-    var dmB = dmChannelId(state.currentUser.name, b.name);
-    var tA  = state.dmLastActivity[dmA] || 0;
-    var tB  = state.dmLastActivity[dmB] || 0;
+    var aId = a.email || a.id || a.name;
+    var bId = b.email || b.id || b.name;
+    var tA  = state.dmLastActivity[emailDmConvId(me, aId)] || 0;
+    var tB  = state.dmLastActivity[emailDmConvId(me, bId)] || 0;
     if (tB !== tA) return tB - tA;
-    return a.name.localeCompare(b.name);
+    return (a.name || '').localeCompare(b.name || '');
   });
 
   filtered.forEach(function(u) {
-    const dmId      = dmChannelId(state.currentUser.name, u.name);
-    const hasUnread = state.unread[dmId] > 0;
+    var uId     = u.email || u.id || u.name;
+    var dmId    = emailDmConvId(me, uId);
+    var hasUnread = state.unread[dmId] > 0;
 
     const div = document.createElement('div');
     div.className = 'channel-item' + (dmId === state.currentChannel ? ' active' : '');
-    div.onclick   = function() { loadChannelAndCloseSidebar(dmId, u.name, 'Direct message with ' + u.name); };
+    div.onclick   = function() { loadChannelAndCloseSidebar(dmId, u.name || u.email, 'Direct message with ' + (u.name || u.email)); };
 
     const dot = document.createElement('span');
-    dot.style.cssText = 'width:8px;height:8px;border-radius:50%;background:' + statusColor(u.status) + ';display:inline-block;flex-shrink:0;';
+    dot.style.cssText = 'width:8px;height:8px;border-radius:50%;background:' + statusColor(u.status || 'offline') + ';display:inline-block;flex-shrink:0;';
 
     const nameSpan = document.createElement('span');
-    nameSpan.textContent = u.name;
+    nameSpan.textContent = u.name || u.email;
     nameSpan.className = hasUnread ? 'ch-label unread-item' : 'ch-label';
 
     div.appendChild(dot);
@@ -729,7 +757,6 @@ function renderDMs(users, filter) {
     list.appendChild(div);
   });
 
-  // Show "New Message" button to start a conversation with someone new
   renderNewDmButton(users, list);
 }
 
@@ -753,7 +780,6 @@ function renderNewDmButton(allUsers, list) {
 var _newDmModal = null;
 
 function openNewDmModal(users) {
-  // Remove existing modal if any
   if (_newDmModal) _newDmModal.remove();
 
   var overlay = document.createElement('div');
@@ -761,16 +787,20 @@ function openNewDmModal(users) {
   overlay.id = 'newDmModal';
   _newDmModal = overlay;
 
-  // Only show users who do NOT already have a conversation in the sidebar
-  var allUsers = (users || OfflineStore.getCachedUsers())
-    .filter(function(u) { return u.name !== state.currentUser.name; });
+  var me       = state.currentUser.email || state.currentUser.id;
+  var allUsers = (users || OfflineStore.getAllEmailUsers && OfflineStore.getAllEmailUsers() || OfflineStore.getCachedUsers())
+    .filter(function(u) {
+      var uId = u.email || u.id || u.name;
+      return uId !== me && u.name !== state.currentUser.name;
+    });
 
+  // Only show users without an existing conversation
   var newUsers = allUsers.filter(function(u) {
-    var dmId = dmChannelId(state.currentUser.name, u.name);
-    var hasMsgs    = OfflineStore.getCachedMessages(dmId).length > 0;
-    var hasUnread  = (state.unread[dmId] || 0) > 0;
-    var hasActivity = (state.dmLastActivity[dmId] || 0) > 0;
-    return !hasMsgs && !hasUnread && !hasActivity;
+    var uId  = u.email || u.id || u.name;
+    var dmId = emailDmConvId(me, uId);
+    return OfflineStore.getCachedMessages(dmId).length === 0 &&
+           !(state.unread[dmId] || 0) &&
+           !(state.dmLastActivity[dmId] || 0);
   });
 
   overlay.innerHTML =
@@ -782,25 +812,15 @@ function openNewDmModal(users) {
           'style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-input);color:var(--text-light);font-size:13px;outline:none;" ' +
           'oninput="filterNewDmList(this.value)">' +
       '</div>' +
-      '<div id="newDmUserList" style="max-height:260px;overflow-y:auto;display:flex;flex-direction:column;gap:2px;">' +
-      '</div>' +
-      '<div class="modal-actions">' +
-        '<button class="btn cancel" onclick="closeNewDmModal()">Cancel</button>' +
-      '</div>' +
+      '<div id="newDmUserList" style="max-height:260px;overflow-y:auto;display:flex;flex-direction:column;gap:2px;"></div>' +
+      '<div class="modal-actions"><button class="btn cancel" onclick="closeNewDmModal()">Cancel</button></div>' +
     '</div>';
 
   overlay.onclick = function(e) { if (e.target === overlay) closeNewDmModal(); };
   document.body.appendChild(overlay);
-
-  // Store users list on the overlay for filtering
   overlay._newUsers = newUsers;
   renderNewDmUserList(newUsers);
-
-  // Focus search
-  setTimeout(function() {
-    var searchInput = document.getElementById('newDmSearch');
-    if (searchInput) searchInput.focus();
-  }, 50);
+  setTimeout(function() { var s = document.getElementById('newDmSearch'); if (s) s.focus(); }, 50);
 }
 
 function renderNewDmUserList(users) {
@@ -811,9 +831,15 @@ function renderNewDmUserList(users) {
     return;
   }
   list.innerHTML = users.map(function(u) {
-    return '<div class="new-dm-row" onclick="startDmWith(\'' + escapeHtml(u.name) + '\')">' +
-      '<div class="user-avatar" style="background:' + u.color + ';width:28px;height:28px;font-size:12px;flex-shrink:0">' + u.name[0] + '</div>' +
-      '<span style="flex:1;font-size:13px">' + escapeHtml(u.name) + '</span>' +
+    var displayName = u.name || u.email || '';
+    var initial     = displayName[0] ? displayName[0].toUpperCase() : '?';
+    var identifier  = escapeHtml(u.name || u.email || '');
+    return '<div class="new-dm-row" onclick="startDmWith(\'' + identifier + '\')">' +
+      '<div class="user-avatar" style="background:' + (u.color || '#6264a7') + ';width:28px;height:28px;font-size:12px;flex-shrink:0">' + initial + '</div>' +
+      '<div style="flex:1;min-width:0;">' +
+        '<div style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(displayName) + '</div>' +
+        (u.email && u.name ? '<div style="font-size:10px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(u.email) + '</div>' : '') +
+      '</div>' +
       '<span style="font-size:10px;color:' + statusColor(u.status || 'offline') + '">' + (u.status || 'offline') + '</span>' +
     '</div>';
   }).join('');
@@ -823,7 +849,9 @@ function filterNewDmList(query) {
   if (!_newDmModal) return;
   var users = _newDmModal._newUsers || [];
   var q = (query || '').toLowerCase().trim();
-  var filtered = q ? users.filter(function(u) { return u.name.toLowerCase().includes(q); }) : users;
+  var filtered = q ? users.filter(function(u) {
+    return (u.name || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q);
+  }) : users;
   renderNewDmUserList(filtered);
 }
 
@@ -833,8 +861,12 @@ function closeNewDmModal() {
 
 function startDmWith(userName) {
   closeNewDmModal();
-  var dmId = dmChannelId(state.currentUser.name, userName);
-  // Mark activity so this user now appears in the DM list
+  // Find the user by name to get their email
+  var allUsers = OfflineStore.getAllEmailUsers ? OfflineStore.getAllEmailUsers() : OfflineStore.getCachedUsers();
+  var target   = allUsers.find(function(u) { return u.name === userName || u.email === userName; });
+  var me       = state.currentUser.email || state.currentUser.id;
+  var targetId = target ? (target.email || target.id || target.name) : userName;
+  var dmId     = emailDmConvId(me, targetId);
   state.dmLastActivity[dmId] = Date.now();
   loadChannelAndCloseSidebar(dmId, userName, 'Direct message with ' + userName);
   renderDMsFromCache();
@@ -1037,7 +1069,11 @@ function clearUnreadMsgIdsForChannel() {
 }
 
 function appendMessageEl(area, msg, lastSeenMsgPerUser) {
-  const isMine   = msg.sender === state.currentUser.name;
+  // In email mode, "mine" = message from my email address OR my current name
+  const myEmail = state.currentUser.email || state.currentUser.id || '';
+  const isMine  = msg.sender === state.currentUser.name ||
+                  msg.from   === myEmail ||
+                  (msg.fromEmail && msg.fromEmail === myEmail);
   const isViaSms = !!msg.viaSms;
   const group    = document.createElement('div');
   group.className = 'msg-group' + (isMine ? ' mine' : '') + (isViaSms ? ' sms-msg' : '');
@@ -1200,6 +1236,7 @@ async function sendMessage() {
 
   const msg = {
     sender:    state.currentUser.name,
+    from:      state.currentUser.email || state.currentUser.id,  // email for reliable "mine" detection
     color:     state.currentUser.color,
     text:      text,
     time:      formatTime(new Date()),
@@ -1940,18 +1977,39 @@ async function saveSettings() {
   updateStatusDisplay(status);
   document.getElementById('myName').textContent = state.currentUser.name;
   document.getElementById('myAvatarInitial').textContent = state.currentUser.name[0].toUpperCase();
+  var myAvatarEl = document.getElementById('myAvatar');
+  if (myAvatarEl) myAvatarEl.style.background = state.currentUser.color;
+
+  // Save to sessionStorage (current tab) AND localStorage (survives refresh)
   sessionStorage.setItem('teamsUser', JSON.stringify(state.currentUser));
 
-  // Email mode: save locally only (no Firestore)
+  // Use a simple key — email with special chars replaced
+  var profileKey = 'mhc_profile_' + (state.currentUser.email || state.currentUser.id || '').replace(/[^a-z0-9]/gi, '_');
+  localStorage.setItem(profileKey, JSON.stringify({
+    name:      state.currentUser.name,
+    color:     state.currentUser.color,
+    avatarUrl: state.currentUser.avatarUrl || '',
+    mobile:    state.currentUser.mobile    || '',
+    status:    state.currentUser.status,
+  }));
+
+  // Also update the persistent session so refresh restores the new name
+  localStorage.setItem('mhc_session', JSON.stringify(state.currentUser));
+
+  console.log('[Settings] Saved profile to localStorage key:', profileKey, '→ name:', state.currentUser.name);
+
+  // Update email user cache
   OfflineStore.upsertCachedUser(Object.assign({}, state.currentUser));
   if (OfflineStore.upsertCachedEmailUser) {
-    OfflineStore.upsertCachedEmailUser({ email: state.currentUser.email || state.currentUser.id, name: state.currentUser.name, color: state.currentUser.color });
+    OfflineStore.upsertCachedEmailUser({
+      email:  state.currentUser.email || state.currentUser.id,
+      name:   state.currentUser.name,
+      color:  state.currentUser.color,
+      mobile: state.currentUser.mobile || '',
+    });
   }
 
-  // Push updated user list to SMS bridge
   syncUsersToBridge();
-
-  // Mark mobile as linked so prompt doesn't show again
   if (mobile) localStorage.setItem('pc_mobile_linked', '1');
 
   document.getElementById('settingsSaveMsg').textContent = 'Saved ✓';
@@ -2102,6 +2160,7 @@ function previewAvatar(input) {
     // Email mode: store avatar as data URL locally (no Firebase Storage)
     state.currentUser.avatarUrl = e.target.result;
     sessionStorage.setItem('teamsUser', JSON.stringify(state.currentUser));
+    localStorage.setItem('mhc_session', JSON.stringify(state.currentUser));
     OfflineStore.upsertCachedUser(Object.assign({}, state.currentUser));
     if (OfflineStore.upsertCachedEmailUser) {
       OfflineStore.upsertCachedEmailUser({ email: state.currentUser.email || state.currentUser.id, avatarUrl: e.target.result });
@@ -2130,6 +2189,7 @@ function removeAvatar() {
   // Email mode: clear locally only
   delete state.currentUser.avatarUrl;
   sessionStorage.setItem('teamsUser', JSON.stringify(state.currentUser));
+  localStorage.setItem('mhc_session', JSON.stringify(state.currentUser));
   OfflineStore.upsertCachedUser(Object.assign({}, state.currentUser));
 
   var avatarInput = document.getElementById('avatarInput');
@@ -2153,7 +2213,11 @@ async function logout() {
   if (_unsubscribeTyping) { _unsubscribeTyping(); _unsubscribeTyping = null; }
   state.unsubscribeNotifs.forEach(function(u) { u(); });
   state.unsubscribeNotifs = [];
+
+  // Clear both session stores
   sessionStorage.removeItem('teamsUser');
+  localStorage.removeItem('mhc_session');
+
   window.location.href = 'index.html';
 }
 
