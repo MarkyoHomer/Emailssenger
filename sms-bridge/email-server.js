@@ -362,8 +362,10 @@ app.get('/users', function(req, res) { res.json(loadUsers()); });
 app.get('/messages/:convId', function(req, res) {
   const token = req.headers['x-token'];
   const sess  = sessions[token];
-  if (!sess) return res.status(401).json({ ok: false, error: 'Not authenticated' });
-
+  if (!sess) {
+    // Token expired (server restarted) — tell client to re-login
+    return res.status(401).json({ ok: false, error: 'Session expired. Please refresh and log in again.', reauth: true });
+  }
   const since = req.query.since || '';
   const msgs  = (messageStore[req.params.convId] || []).filter(function(m) {
     if (!since) return true;
