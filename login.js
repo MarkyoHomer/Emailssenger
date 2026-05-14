@@ -135,6 +135,10 @@ async function handleLogin(e) {
     OfflineStore.upsertCachedEmailUser({ email, name: data.user.name, color: data.user.color, token: data.token, imapHost, imapPort, smtpHost, smtpPort });
     OfflineStore.saveEmailSession({ email, name: data.user.name, imapHost, imapPort, smtpHost, smtpPort, provider: _selectedProvider });
 
+    // Save credentials for automatic re-auth when server session expires
+    var emailKey = email.replace(/[^a-z0-9]/gi, '_');
+    localStorage.setItem('mhc_creds_' + emailKey, JSON.stringify({ password, imapHost, imapPort, smtpHost, smtpPort }));
+
     // Check if user has a saved display name override from profile settings
     var profileKey      = 'mhc_profile_' + email.replace(/[^a-z0-9]/gi, '_');
     var savedProfile    = JSON.parse(localStorage.getItem(profileKey) || 'null');

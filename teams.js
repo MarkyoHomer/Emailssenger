@@ -2,20 +2,28 @@
 (function() {
   var session = sessionStorage.getItem('teamsUser');
   if (!session) {
-    // Try to restore from localStorage (survives refresh)
     var stored = localStorage.getItem('mhc_session');
     if (stored) {
       try {
         var parsed = JSON.parse(stored);
-        // Apply any saved profile overrides
-        var profileKey   = 'mhc_profile_' + (parsed.email || parsed.id || '').replace(/[^a-z0-9]/gi, '_');
-        var savedProfile = JSON.parse(localStorage.getItem(profileKey) || 'null');
+        var emailKey = (parsed.email || parsed.id || '').replace(/[^a-z0-9]/gi, '_');
+
+        // Check profile override
+        var savedProfile = null;
+        try { savedProfile = JSON.parse(localStorage.getItem('mhc_profile_' + emailKey) || 'null'); } catch(e) {}
+
+        // Apply overrides — profile key takes priority over session
         if (savedProfile && savedProfile.name) {
           parsed.name      = savedProfile.name;
           parsed.color     = savedProfile.color     || parsed.color;
           parsed.avatarUrl = savedProfile.avatarUrl || parsed.avatarUrl || '';
           parsed.mobile    = savedProfile.mobile    || parsed.mobile    || '';
         }
+
+        // Final fallback: simple name key
+        var simpleName = localStorage.getItem('mhc_name_' + emailKey);
+        if (simpleName) parsed.name = simpleName;
+
         sessionStorage.setItem('teamsUser', JSON.stringify(parsed));
         session = JSON.stringify(parsed);
       } catch (e) {
@@ -39,9 +47,13 @@ function isOnline() { return navigator.onLine; }
 const EMAIL_BRIDGE_URL = localStorage.getItem('mhc_bridge_url') || 'https://emailssenger-production.up.railway.app';
 
 // Get the auth token for the current user
+// Reads from sessionStorage first, falls back to localStorage
 function getEmailToken() {
   var u = JSON.parse(sessionStorage.getItem('teamsUser') || '{}');
-  return u.token || '';
+  if (u.token) return u.token;
+  // Fallback: read directly from persistent session
+  var stored = JSON.parse(localStorage.getItem('mhc_session') || '{}');
+  return stored.token || '';
 }
 
 function emailHeaders() {
@@ -87,6 +99,53 @@ function stopAllEmailPolls() {
   Object.keys(_emailPollTimers).forEach(stopEmailPoll);
 }
 
+// Re-authenticate with the server when session expires (server restart)
+var _reAuthInProgress = false;
+async function reAuthWithServer() {
+  if (_reAuthInProgress) return;
+  _reAuthInProgress = true;
+  try {
+    var stored = JSON.parse(localStorage.getItem('mhc_session') || '{}');
+    if (!stored.email) { _reAuthInProgress = false; return; }
+
+    // Get saved credentials — we need the password which is in the email cache
+    var emailKey = stored.email.replace(/[^a-z0-9]/gi, '_');
+    var creds    = JSON.parse(localStorage.getItem('mhc_creds_' + emailKey) || 'null');
+    if (!creds || !creds.password) {
+      console.warn('[Auth] No saved credentials for re-auth — user must log in again');
+      _reAuthInProgress = false;
+      return;
+    }
+
+    console.log('[Auth] Re-authenticating with server...');
+    var res  = await fetch(EMAIL_BRIDGE_URL + '/auth/login', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        email:    stored.email,
+        password: creds.password,
+        imapHost: creds.imapHost,
+        imapPort: creds.imapPort,
+        smtpHost: creds.smtpHost,
+        smtpPort: creds.smtpPort,
+      }),
+      signal: AbortSignal.timeout(20000),
+    });
+    var data = await res.json();
+    if (data.ok && data.token) {
+      // Update token in all stores
+      state.currentUser.token = data.token;
+      sessionStorage.setItem('teamsUser', JSON.stringify(state.currentUser));
+      stored.token = data.token;
+      localStorage.setItem('mhc_session', JSON.stringify(stored));
+      console.log('[Auth] Re-authenticated successfully');
+    }
+  } catch (e) {
+    console.warn('[Auth] Re-auth failed:', e.message);
+  }
+  _reAuthInProgress = false;
+}
+
 async function fetchEmailMessages(convId) {
   var since = _emailPollSince[convId] || '';
   try {
@@ -99,12 +158,19 @@ async function fetchEmailMessages(convId) {
         signal:  AbortSignal.timeout(12000),
       });
     } catch (syncErr) {
-      // Sync failed (timeout etc) — still try to fetch cached messages
+      // Sync failed — still try to fetch cached messages
     }
 
     var url = EMAIL_BRIDGE_URL + '/messages/' + encodeURIComponent(convId) +
               (since ? '?since=' + encodeURIComponent(since) : '');
     var res  = await fetch(url, { headers: emailHeaders(), signal: AbortSignal.timeout(5000) });
+
+    // Handle session expiry — re-authenticate automatically
+    if (res.status === 401) {
+      await reAuthWithServer();
+      return; // will retry on next poll
+    }
+
     var msgs = await res.json();
     if (!Array.isArray(msgs) || !msgs.length) return;
 
@@ -1286,6 +1352,11 @@ async function sendMessage() {
 
   try {
     var result = await emailSendMessage(state.currentChannel, msg, recipients);
+    if (result && result.error && result.error.includes('401')) {
+      // Session expired — re-auth and retry once
+      await reAuthWithServer();
+      result = await emailSendMessage(state.currentChannel, msg, recipients);
+    }
     clearPending(result && result.id);
 
     // Update cached message — remove pending flag
@@ -1983,9 +2054,14 @@ async function saveSettings() {
   // Save to sessionStorage (current tab) AND localStorage (survives refresh)
   sessionStorage.setItem('teamsUser', JSON.stringify(state.currentUser));
 
-  // Use a simple key — email with special chars replaced
-  var profileKey = 'mhc_profile_' + (state.currentUser.email || state.currentUser.id || '').replace(/[^a-z0-9]/gi, '_');
-  localStorage.setItem(profileKey, JSON.stringify({
+  // THREE separate localStorage writes to ensure name persists
+  var emailKey = (state.currentUser.email || state.currentUser.id || '').replace(/[^a-z0-9]/gi, '_');
+
+  // 1. Full session (primary restore on refresh)
+  localStorage.setItem('mhc_session', JSON.stringify(state.currentUser));
+
+  // 2. Profile override (applied on top of session)
+  localStorage.setItem('mhc_profile_' + emailKey, JSON.stringify({
     name:      state.currentUser.name,
     color:     state.currentUser.color,
     avatarUrl: state.currentUser.avatarUrl || '',
@@ -1993,10 +2069,10 @@ async function saveSettings() {
     status:    state.currentUser.status,
   }));
 
-  // Also update the persistent session so refresh restores the new name
-  localStorage.setItem('mhc_session', JSON.stringify(state.currentUser));
+  // 3. Simple name-only key as final fallback
+  localStorage.setItem('mhc_name_' + emailKey, state.currentUser.name);
 
-  console.log('[Settings] Saved profile to localStorage key:', profileKey, '→ name:', state.currentUser.name);
+  console.log('[Settings] Saved → name:', state.currentUser.name, '| key:', emailKey);
 
   // Update email user cache
   OfflineStore.upsertCachedUser(Object.assign({}, state.currentUser));
